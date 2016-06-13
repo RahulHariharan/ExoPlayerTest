@@ -22,6 +22,7 @@ import android.media.MediaCodec;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.net.Uri;
+import android.os.AsyncTask;
 import android.os.Handler;
 import android.util.Log;
 
@@ -48,19 +49,24 @@ import com.google.android.exoplayer.upstream.cache.SimpleCache;
 
 
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.concurrent.TimeUnit;
 
 import okhttp3.CacheControl;
+import okhttp3.Call;
 import okhttp3.Interceptor;
 import okhttp3.OkHttpClient;
+import okhttp3.Request;
 import okhttp3.Response;
 
 
 /**
  * A {@link } for streams that can be read using an {@link Extractor}.
  */
-public class ExtractorRendererBuilder implements DemoPlayer.RendererBuilder{
+public class ExtractorRendererBuilder implements DemoPlayer.RendererBuilder, TransferListener{
 
     private static final int BUFFER_SEGMENT_SIZE = 64 * 1024;
     private static final int BUFFER_SEGMENT_COUNT = 256;
@@ -68,11 +74,14 @@ public class ExtractorRendererBuilder implements DemoPlayer.RendererBuilder{
     private final Context context;
     private final String userAgent;
     private Uri uri;
+    File mediaFile;
+    byte[] buff = new byte[1024 * 4];
 
     public ExtractorRendererBuilder(Context context, String userAgent, Uri uri) {
         this.context = context;
         this.userAgent = userAgent;
         this.uri = uri;
+        this.mediaFile = new File(context.getCacheDir(), "mySuperVideo.mp4");
     }
 
     @Override
@@ -82,7 +91,7 @@ public class ExtractorRendererBuilder implements DemoPlayer.RendererBuilder{
 
         // Build the video and audio renderers.
         DefaultBandwidthMeter bandwidthMeter = new DefaultBandwidthMeter(mainHandler, null);
-        DataSource dataSource = new DefaultUriDataSource(context,null,userAgent);
+        DataSource dataSource = new DefaultUriDataSource(context,this,userAgent);
         ExtractorSampleSource sampleSource = new ExtractorSampleSource(uri,dataSource,allocator,
                 BUFFER_SEGMENT_COUNT * BUFFER_SEGMENT_SIZE, mainHandler, player, 0);
         MediaCodecVideoTrackRenderer videoRenderer = new MediaCodecVideoTrackRenderer(context,
@@ -115,5 +124,33 @@ public class ExtractorRendererBuilder implements DemoPlayer.RendererBuilder{
         }
         NetworkInfo.State network = networkInfo.getState();
         return (network == NetworkInfo.State.CONNECTED || network == NetworkInfo.State.CONNECTING);
+    }
+
+    @Override
+    public void onTransferStart() {
+
+    }
+
+    @Override
+    public void onBytesTransferred(int bytesTransferred) {
+        Log.v("bytestransferred", Integer.toString(bytesTransferred));
+        final int bytes = bytesTransferred;
+
+        new Thread(new Runnable(){
+            @Override
+            public void run() {
+                try {
+                    OutputStream output = new FileOutputStream(mediaFile);
+                    output.write(buff, 0, bytes);
+                }catch(IOException exception){
+                    exception.printStackTrace();
+                }
+            }
+        }).start();
+    }
+
+    @Override
+    public void onTransferEnd() {
+
     }
 }
